@@ -8,13 +8,13 @@ from sklearn.neighbors import KNeighborsRegressor
 from sklearn.metrics import mean_squared_error, r2_score
 
 # -----------------------------
-# APP CONFIG
+# APP SETUP
 # -----------------------------
 st.set_page_config(layout="wide")
-st.title("🌾 KNN Crop Production Prediction App")
+st.title("🌾 Crop Production Prediction (Fixed UI Version)")
 
 # -----------------------------
-# UPLOAD DATASET
+# UPLOAD DATA
 # -----------------------------
 file = st.file_uploader("Upload CSV File", type=["csv"])
 
@@ -27,10 +27,8 @@ if file is not None:
     st.dataframe(df.head())
 
     # -----------------------------
-    # HANDLE MISSING VALUES
+    # CLEAN MISSING VALUES
     # -----------------------------
-    st.subheader("🧹 Missing Value Handling")
-
     for col in df.columns:
         if df[col].dtype == "object":
             df[col] = df[col].fillna(df[col].mode()[0])
@@ -38,12 +36,16 @@ if file is not None:
             df[col] = pd.to_numeric(df[col], errors="coerce")
             df[col] = df[col].fillna(df[col].mean())
 
-    st.success("Missing values cleaned safely")
+    st.success("Missing values handled")
 
     # -----------------------------
-    # SELECT TARGET
+    # TARGET COLUMN
     # -----------------------------
-    target = st.selectbox("Select Target Column", df.columns)
+    target = "Production"
+
+    if target not in df.columns:
+        st.error("Production column not found!")
+        st.stop()
 
     # -----------------------------
     # ENCODING
@@ -51,33 +53,20 @@ if file is not None:
     df_encoded = df.copy()
     encoders = {}
 
+    categorical_cols = []
+
     for col in df_encoded.columns:
         if df_encoded[col].dtype == "object":
             le = LabelEncoder()
             df_encoded[col] = le.fit_transform(df_encoded[col])
             encoders[col] = le
-
-    st.success("Encoding completed")
-
-    # -----------------------------
-    # SAFE OUTLIER HANDLING
-    # -----------------------------
-    num_cols = df_encoded.select_dtypes(include=np.number).columns
-
-    for col in num_cols:
-        lower = df_encoded[col].quantile(0.05)
-        upper = df_encoded[col].quantile(0.95)
-        df_encoded[col] = df_encoded[col].clip(lower, upper)
+            categorical_cols.append(col)
 
     # -----------------------------
     # FEATURES & TARGET
     # -----------------------------
     X = df_encoded.drop(columns=[target])
     y = df_encoded[target]
-
-    if len(X) == 0:
-        st.error("Dataset became empty after preprocessing.")
-        st.stop()
 
     # -----------------------------
     # TRAIN TEST SPLIT
@@ -94,29 +83,19 @@ if file is not None:
     X_train = scaler.fit_transform(X_train)
     X_test = scaler.transform(X_test)
 
-    # -----------------------------
-    # 🔥 FINAL SAFETY CLEANING (IMPORTANT)
-    # -----------------------------
     X_train = np.nan_to_num(X_train)
     X_test = np.nan_to_num(X_test)
     y_train = np.nan_to_num(y_train)
     y_test = np.nan_to_num(y_test)
 
-    y_train = np.ravel(y_train)
-    y_test = np.ravel(y_test)
-
     # -----------------------------
-    # MODEL SELECTION
+    # MODEL
     # -----------------------------
     k = st.slider("Select K Value", 1, 20, 5)
 
-    if k >= len(X_train):
-        st.error("K value is too large for dataset size!")
-        st.stop()
-
     model = KNeighborsRegressor(n_neighbors=k)
-
     model.fit(X_train, y_train)
+
     y_pred = model.predict(X_test)
 
     # -----------------------------
@@ -124,41 +103,39 @@ if file is not None:
     # -----------------------------
     st.subheader("📈 Model Performance")
 
-    mse = mean_squared_error(y_test, y_pred)
-    rmse = np.sqrt(mse)
-    r2 = r2_score(y_test, y_pred)
-
-    col1, col2, col3 = st.columns(3)
-    col1.metric("MSE", round(mse, 2))
-    col2.metric("RMSE", round(rmse, 2))
-    col3.metric("R² Score", round(r2, 2))
+    st.write("MSE:", round(mean_squared_error(y_test, y_pred), 2))
+    st.write("R² Score:", round(r2_score(y_test, y_pred), 2))
 
     # -----------------------------
-    # PREDICTION SECTION (SAFE UI)
+    # 🔮 PREDICTION UI (FIXED)
     # -----------------------------
     st.subheader("🔮 Predict Production")
 
-    user_input = []
+    input_data = []
 
     for col in X.columns:
 
+        # 🔴 CATEGORICAL → DROPDOWN
         if col in encoders:
-            options = list(encoders[col].classes_)
-            val = st.selectbox(f"{col}", options)
-            val = encoders[col].transform([val])[0]
-        else:
-            val = st.number_input(f"{col}", value=float(df_encoded[col].mean()))
 
-        user_input.append(val)
+            options = list(encoders[col].classes_)
+            selected = st.selectbox(col, options)
+
+            encoded = encoders[col].transform([selected])[0]
+            input_data.append(encoded)
+
+        # 🔵 NUMERIC → NUMBER INPUT
+        else:
+            val = st.number_input(col, value=float(df[col].mean()))
+            input_data.append(val)
 
     # -----------------------------
     # PREDICT BUTTON
     # -----------------------------
     if st.button("Predict"):
 
-        input_array = np.array(user_input).reshape(1, -1)
+        input_array = np.array(input_data).reshape(1, -1)
         input_array = scaler.transform(input_array)
-
         input_array = np.nan_to_num(input_array)
 
         result = model.predict(input_array)
@@ -166,4 +143,4 @@ if file is not None:
         st.success(f"🌾 Predicted Production: {result[0]:.2f}")
 
 else:
-    st.info("👆 Upload CSV file to start")
+    st.info("👆 Upload your CSV file to start")
