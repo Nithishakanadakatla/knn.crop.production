@@ -30,26 +30,32 @@ if uploaded_file is not None:
 
     try:
 
-        # ---------------- READ CSV ----------------
+        # ---------------- READ DATA ----------------
 
         df = pd.read_csv(uploaded_file)
 
         st.subheader("📊 Dataset Preview")
-        st.dataframe(df.head(), use_container_width=True)
 
-        # ---------------- REMOVE EMPTY ROWS ----------------
+        st.dataframe(
+            df.head(),
+            use_container_width=True
+        )
+
+        # ---------------- REMOVE NULL VALUES ----------------
 
         df = df.dropna()
 
-        # ---------------- SHOW MISSING VALUES ----------------
+        # ---------------- MISSING VALUES ----------------
 
         st.subheader("🧹 Missing Values")
 
+        missing_df = pd.DataFrame(
+            df.isnull().sum(),
+            columns=["Missing Values"]
+        )
+
         st.dataframe(
-            pd.DataFrame(
-                df.isnull().sum(),
-                columns=["Missing Values"]
-            ),
+            missing_df,
             use_container_width=True
         )
 
@@ -73,7 +79,7 @@ if uploaded_file is not None:
 
                 label_encoders[col] = le
 
-        # ---------------- KEEP ONLY NUMERIC COLUMNS ----------------
+        # ---------------- KEEP ONLY NUMERIC ----------------
 
         encoded_df = encoded_df.select_dtypes(
             include=[np.number]
@@ -86,7 +92,7 @@ if uploaded_file is not None:
             use_container_width=True
         )
 
-        # ---------------- CHECK DATASET ----------------
+        # ---------------- CHECK EMPTY ----------------
 
         if encoded_df.shape[0] == 0:
 
@@ -109,7 +115,9 @@ if uploaded_file is not None:
 
         fig, ax = plt.subplots(figsize=(8, 4))
 
-        ax.boxplot(encoded_df[target_column])
+        ax.boxplot(
+            encoded_df[target_column]
+        )
 
         ax.set_title(
             f"Boxplot of {target_column}"
@@ -118,7 +126,6 @@ if uploaded_file is not None:
         st.pyplot(fig)
 
         # ---------------- NO OUTLIER REMOVAL ----------------
-        # THIS IS THE FIX
 
         clean_df = encoded_df.copy()
 
@@ -140,7 +147,7 @@ if uploaded_file is not None:
 
         y = y.astype(float)
 
-        # ---------------- CHECK EMPTY ----------------
+        # ---------------- CHECK DATA ----------------
 
         if len(X) < 2:
 
@@ -201,7 +208,7 @@ if uploaded_file is not None:
             y_pred
         )
 
-        # ---------------- RESULTS ----------------
+        # ---------------- PERFORMANCE ----------------
 
         st.subheader("📉 Model Performance")
 
@@ -225,18 +232,48 @@ if uploaded_file is not None:
                 round(r2, 2)
             )
 
-        # ---------------- MANUAL PREDICTION ----------------
+        # ---------------- MAKE PREDICTION ----------------
 
         st.subheader("🧑‍🌾 Make Prediction")
 
         input_data = {}
 
-        for column in X.columns:
+        # SHOW ALL ORIGINAL COLUMNS
+        for column in df.columns:
 
-            input_data[column] = st.number_input(
-                f"Enter {column}",
-                value=float(X[column].mean())
-            )
+            # Skip target column
+            if column == target_column:
+                continue
+
+            # ---------------- CATEGORICAL ----------------
+
+            if column in label_encoders:
+
+                options = list(
+                    label_encoders[column].classes_
+                )
+
+                selected_option = st.selectbox(
+                    f"Select {column}",
+                    options
+                )
+
+                encoded_value = label_encoders[column].transform(
+                    [selected_option]
+                )[0]
+
+                input_data[column] = encoded_value
+
+            # ---------------- NUMERIC ----------------
+
+            else:
+
+                input_value = st.number_input(
+                    f"Enter {column}",
+                    value=float(df[column].mean())
+                )
+
+                input_data[column] = input_value
 
         # ---------------- PREDICT BUTTON ----------------
 
@@ -245,6 +282,9 @@ if uploaded_file is not None:
             input_df = pd.DataFrame(
                 [input_data]
             )
+
+            # SAME COLUMN ORDER
+            input_df = input_df[X.columns]
 
             prediction = model.predict(
                 input_df
