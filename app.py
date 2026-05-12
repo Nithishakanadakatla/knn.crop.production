@@ -30,43 +30,30 @@ if uploaded_file is not None:
 
     try:
 
-        # ---------------- LOAD DATA ----------------
+        # ---------------- READ CSV ----------------
 
         df = pd.read_csv(uploaded_file)
 
         st.subheader("📊 Dataset Preview")
         st.dataframe(df.head(), use_container_width=True)
 
-        # ---------------- DATA INFO ----------------
+        # ---------------- REMOVE EMPTY ROWS ----------------
 
-        st.subheader("📌 Dataset Info")
+        df = df.dropna()
 
-        numeric_cols = df.select_dtypes(include=np.number)
-
-        if not numeric_cols.empty:
-            st.dataframe(
-                numeric_cols.describe(),
-                use_container_width=True
-            )
-
-        # ---------------- MISSING VALUES ----------------
+        # ---------------- SHOW MISSING VALUES ----------------
 
         st.subheader("🧹 Missing Values")
 
-        missing_df = pd.DataFrame(
-            df.isnull().sum(),
-            columns=["Missing Values"]
-        )
-
         st.dataframe(
-            missing_df,
+            pd.DataFrame(
+                df.isnull().sum(),
+                columns=["Missing Values"]
+            ),
             use_container_width=True
         )
 
-        # Remove missing values
-        df = df.dropna()
-
-        # ---------------- ENCODE CATEGORICAL COLUMNS ----------------
+        # ---------------- ENCODING ----------------
 
         st.subheader("🔤 Encoding Categorical Columns")
 
@@ -86,21 +73,26 @@ if uploaded_file is not None:
 
                 label_encoders[col] = le
 
-        # Convert all columns to numeric
-        encoded_df = encoded_df.apply(
-            pd.to_numeric,
-            errors="coerce"
+        # ---------------- KEEP ONLY NUMERIC COLUMNS ----------------
+
+        encoded_df = encoded_df.select_dtypes(
+            include=[np.number]
         )
 
-        # Remove NaN rows
-        encoded_df = encoded_df.dropna()
-
-        st.write("Encoded Data Preview")
+        st.write("Encoded Dataset Preview")
 
         st.dataframe(
             encoded_df.head(),
             use_container_width=True
         )
+
+        # ---------------- CHECK DATASET ----------------
+
+        if encoded_df.shape[0] == 0:
+
+            st.error("Dataset is empty.")
+
+            st.stop()
 
         # ---------------- TARGET COLUMN ----------------
 
@@ -113,13 +105,11 @@ if uploaded_file is not None:
 
         # ---------------- BOXPLOT ----------------
 
-        st.subheader("📈 Outlier Detection (Boxplot)")
+        st.subheader("📈 Outlier Detection")
 
         fig, ax = plt.subplots(figsize=(8, 4))
 
-        ax.boxplot(
-            encoded_df[target_column].astype(float)
-        )
+        ax.boxplot(encoded_df[target_column])
 
         ax.set_title(
             f"Boxplot of {target_column}"
@@ -127,45 +117,13 @@ if uploaded_file is not None:
 
         st.pyplot(fig)
 
-        # ---------------- REMOVE OUTLIERS ----------------
+        # ---------------- NO OUTLIER REMOVAL ----------------
+        # THIS IS THE FIX
 
-        # Apply only if target has many unique values
-        if encoded_df[target_column].nunique() > 10:
-
-            Q1 = encoded_df[target_column].quantile(0.25)
-
-            Q3 = encoded_df[target_column].quantile(0.75)
-
-            IQR = Q3 - Q1
-
-            lower_bound = Q1 - 1.5 * IQR
-
-            upper_bound = Q3 + 1.5 * IQR
-
-            clean_df = encoded_df[
-                (encoded_df[target_column] >= lower_bound) &
-                (encoded_df[target_column] <= upper_bound)
-            ]
-
-            # If all rows removed
-            if clean_df.shape[0] == 0:
-
-                st.warning(
-                    "All rows removed during outlier removal. Using original dataset."
-                )
-
-                clean_df = encoded_df.copy()
-
-        else:
-
-            clean_df = encoded_df.copy()
-
-            st.info(
-                "Outlier removal skipped for categorical target."
-            )
+        clean_df = encoded_df.copy()
 
         st.success(
-            f"Shape after removing outliers: {clean_df.shape}"
+            f"Dataset Shape: {clean_df.shape}"
         )
 
         # ---------------- FEATURES & TARGET ----------------
@@ -176,37 +134,18 @@ if uploaded_file is not None:
 
         y = clean_df[target_column]
 
-        # Convert to float
-        X = X.astype(np.float64)
+        # ---------------- CONVERT TO FLOAT ----------------
 
-        y = y.astype(np.float64)
+        X = X.astype(float)
 
-        # Remove inf values
-        X = X.replace(
-            [np.inf, -np.inf],
-            np.nan
-        )
+        y = y.astype(float)
 
-        y = y.replace(
-            [np.inf, -np.inf],
-            np.nan
-        )
+        # ---------------- CHECK EMPTY ----------------
 
-        # Remove NaN again
-        valid_rows = ~(
-            X.isna().any(axis=1) | y.isna()
-        )
-
-        X = X[valid_rows]
-
-        y = y[valid_rows]
-
-        # ---------------- CHECK EMPTY DATA ----------------
-
-        if len(X) == 0:
+        if len(X) < 2:
 
             st.error(
-                "Dataset became empty after preprocessing."
+                "Not enough data for training."
             )
 
             st.stop()
@@ -226,11 +165,14 @@ if uploaded_file is not None:
 
         max_k = min(15, len(X_train))
 
+        if max_k < 1:
+            max_k = 1
+
         k_value = st.slider(
             "K Value",
             min_value=1,
             max_value=max_k,
-            value=min(5, max_k)
+            value=1
         )
 
         # ---------------- MODEL ----------------
@@ -259,7 +201,7 @@ if uploaded_file is not None:
             y_pred
         )
 
-        # ---------------- MODEL PERFORMANCE ----------------
+        # ---------------- RESULTS ----------------
 
         st.subheader("📉 Model Performance")
 
@@ -283,7 +225,7 @@ if uploaded_file is not None:
                 round(r2, 2)
             )
 
-        # ---------------- PREDICTION SECTION ----------------
+        # ---------------- MANUAL PREDICTION ----------------
 
         st.subheader("🧑‍🌾 Make Prediction")
 
@@ -291,12 +233,10 @@ if uploaded_file is not None:
 
         for column in X.columns:
 
-            value = st.number_input(
+            input_data[column] = st.number_input(
                 f"Enter {column}",
                 value=float(X[column].mean())
             )
-
-            input_data[column] = value
 
         # ---------------- PREDICT BUTTON ----------------
 
@@ -304,10 +244,6 @@ if uploaded_file is not None:
 
             input_df = pd.DataFrame(
                 [input_data]
-            )
-
-            input_df = input_df.astype(
-                np.float64
             )
 
             prediction = model.predict(
