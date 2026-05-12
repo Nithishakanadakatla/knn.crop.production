@@ -3,7 +3,6 @@ import pandas as pd
 import numpy as np
 
 import matplotlib.pyplot as plt
-import seaborn as sns
 
 from sklearn.preprocessing import LabelEncoder, StandardScaler
 from sklearn.model_selection import train_test_split
@@ -11,13 +10,13 @@ from sklearn.neighbors import KNeighborsRegressor
 from sklearn.metrics import mean_squared_error, r2_score
 
 # -----------------------------
-# UI Setup
+# APP CONFIG
 # -----------------------------
 st.set_page_config(layout="wide")
-st.title("🌾 KNN Regression - Crop Production ")
+st.title("🌾 KNN Regression - Crop Production Predictor")
 
 # -----------------------------
-# Upload Dataset
+# UPLOAD DATA
 # -----------------------------
 file = st.file_uploader("Upload CSV File", type=["csv"])
 
@@ -25,19 +24,18 @@ if file is not None:
 
     df = pd.read_csv(file)
 
-    # Clean column names
     df.columns = df.columns.str.strip()
 
     st.subheader("📊 Dataset Preview")
     st.dataframe(df.head())
 
-    st.subheader("📌 Dataset Summary")
+    st.write("📌 Dataset Info")
     st.write(df.describe(include="all"))
 
     # -----------------------------
-    # Missing Values Handling (SAFE)
+    # MISSING VALUE HANDLING
     # -----------------------------
-    st.subheader("🧹 Missing Values Handling")
+    st.subheader("🧹 Handling Missing Values")
 
     for col in df.columns:
         if df[col].dtype == "object":
@@ -46,17 +44,17 @@ if file is not None:
             df[col] = pd.to_numeric(df[col], errors="coerce")
             df[col] = df[col].fillna(df[col].mean())
 
-    st.success("Missing values handled safely")
+    st.success("Missing values cleaned")
 
     # -----------------------------
-    # Select Target
+    # TARGET COLUMN
     # -----------------------------
     target = st.selectbox("Select Target Column", df.columns)
 
     # -----------------------------
-    # Encoding
+    # ENCODING
     # -----------------------------
-    st.subheader("🔤 Encoding Categorical Data")
+    st.subheader("🔤 Encoding Data")
 
     df_encoded = df.copy()
     encoders = {}
@@ -69,12 +67,10 @@ if file is not None:
 
     st.success("Encoding completed")
 
-    st.dataframe(df_encoded.head())
-
     # -----------------------------
-    # Outlier Handling (SAFE - NO ROW DELETION)
+    # OUTLIER HANDLING (SAFE)
     # -----------------------------
-    st.subheader("📊 Outlier Handling (Safe Method)")
+    st.subheader("📊 Outlier Handling (Safe)")
 
     num_cols = df_encoded.select_dtypes(include=np.number).columns
 
@@ -83,34 +79,43 @@ if file is not None:
         upper = df_encoded[col].quantile(0.95)
         df_encoded[col] = df_encoded[col].clip(lower, upper)
 
-    st.success("Outliers handled safely (no rows removed)")
+    st.success("Outliers handled safely")
 
     # -----------------------------
-    # Features & Target
+    # FEATURES & TARGET
     # -----------------------------
     X = df_encoded.drop(columns=[target])
     y = df_encoded[target]
 
     if len(X) == 0:
-        st.error("Dataset became empty after preprocessing. Please check data.")
+        st.error("Dataset became empty after preprocessing")
         st.stop()
 
     # -----------------------------
-    # Train Test Split
+    # TRAIN TEST SPLIT
     # -----------------------------
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.2, random_state=42
     )
 
     # -----------------------------
-    # Scaling
+    # SCALING
     # -----------------------------
     scaler = StandardScaler()
+
     X_train = scaler.fit_transform(X_train)
     X_test = scaler.transform(X_test)
 
     # -----------------------------
-    # Model Selection
+    # 🔥 FINAL SAFETY FIX (IMPORTANT)
+    # -----------------------------
+    X_train = np.nan_to_num(X_train)
+    X_test = np.nan_to_num(X_test)
+    y_train = np.nan_to_num(y_train)
+    y_test = np.nan_to_num(y_test)
+
+    # -----------------------------
+    # MODEL SELECTION
     # -----------------------------
     k = st.slider("Select K Value", 1, 20, 5)
 
@@ -120,7 +125,7 @@ if file is not None:
     y_pred = model.predict(X_test)
 
     # -----------------------------
-    # Metrics
+    # METRICS
     # -----------------------------
     st.subheader("📈 Model Performance")
 
@@ -133,10 +138,28 @@ if file is not None:
     col2.metric("RMSE", round(rmse, 2))
     col3.metric("R² Score", round(r2, 2))
 
+    # -----------------------------
+    # K vs ERROR GRAPH
+    # -----------------------------
+    st.subheader("📉 K vs Error Graph")
 
+    errors = []
+
+    for i in range(1, 21):
+        temp_model = KNeighborsRegressor(n_neighbors=i)
+        temp_model.fit(X_train, y_train)
+        pred = temp_model.predict(X_test)
+        errors.append(mean_squared_error(y_test, pred))
+
+    fig, ax = plt.subplots()
+    ax.plot(range(1, 21), errors)
+    ax.set_xlabel("K Value")
+    ax.set_ylabel("MSE")
+
+    st.pyplot(fig)
 
     # -----------------------------
-    # Prediction Section
+    # PREDICTION SECTION
     # -----------------------------
     st.subheader("🔮 Predict Production")
 
@@ -152,6 +175,8 @@ if file is not None:
 
     user_input = np.array(user_input).reshape(1, -1)
     user_input = scaler.transform(user_input)
+
+    user_input = np.nan_to_num(user_input)
 
     if st.button("Predict"):
         result = model.predict(user_input)
