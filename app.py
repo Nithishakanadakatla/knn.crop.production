@@ -59,22 +59,19 @@ if file is not None:
     # 🎯 SELECT TARGET
     # -------------------------------
     target = st.selectbox("Select Target Column", df.columns)
-
     # -------------------------------
-    # 📊 OUTLIER REMOVAL
+    # 📊 Handle Outliers (CAPPING METHOD)
     # -------------------------------
-    st.subheader("📊 Removing Outliers")
-
-    numeric_cols = df.select_dtypes(include=np.number).columns
-
-    Q1 = df[numeric_cols].quantile(0.25)
-    Q3 = df[numeric_cols].quantile(0.75)
-    IQR = Q3 - Q1
-
-    df = df[~((df[numeric_cols] < (Q1 - 1.5 * IQR)) |
-              (df[numeric_cols] > (Q3 + 1.5 * IQR))).any(axis=1)]
-
-    st.write("Shape after outlier removal:", df.shape)
+    st.subheader("📊 Handling Outliers (Safe Method)")
+    for col in df.select_dtypes(include=np.number).columns:
+        Q1 = df[col].quantile(0.25)
+        Q3 = df[col].quantile(0.75)
+        IQR = Q3 - Q1
+        lower = Q1 - 1.5 * IQR
+        upper = Q3 + 1.5 * IQR
+        df[col] = np.where(df[col] < lower, lower, df[col])
+        df[col] = np.where(df[col] > upper, upper, df[col])
+        st.write("✅ Outliers handled without removing rows")
 
     # -------------------------------
     # 🎯 FEATURES & TARGET
