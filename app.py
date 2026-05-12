@@ -2,153 +2,137 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 
-import matplotlib.pyplot as plt
-import seaborn as sns
-
-from sklearn.preprocessing import LabelEncoder, StandardScaler
 from sklearn.model_selection import train_test_split
-from sklearn.neighbors import KNeighborsRegressor
-from sklearn.metrics import mean_squared_error, r2_score
+from sklearn.preprocessing import StandardScaler, LabelEncoder
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.metrics import accuracy_score, classification_report
 
-st.set_page_config(layout="wide")
-st.title("🌾 KNN Regression - Crop production")
+# ---------------------------
+# Streamlit UI
+# ---------------------------
+st.set_page_config(page_title="KNN Crop Predictor", layout="wide")
+st.title("🌾 KNN Crop Prediction App (Clean Version)")
 
-# -------------------------------
-# 📂 Upload Dataset
-# -------------------------------
-file = st.file_uploader("Upload CSV File", type=["csv"])
+# ---------------------------
+# File Upload
+# ---------------------------
+uploaded_file = st.file_uploader("Upload your dataset (CSV)", type=["csv"])
 
-if file is not None:
+if uploaded_file is not None:
+    data = pd.read_csv(uploaded_file)
+    st.subheader("📊 Raw Data Preview")
+    st.dataframe(data.head())
 
-    df = pd.read_csv(file)
+    # ---------------------------
+    # Handle Missing Values
+    # ---------------------------
+    st.write("🔧 Handling missing values...")
 
-    st.subheader("📊 Original Dataset")
-    st.dataframe(df.head())
+    for col in data.columns:
+        if data[col].dtype == "object":
+            data[col].fillna(data[col].mode()[0], inplace=True)
+        else:
+            data[col].fillna(data[col].mean(), inplace=True)
 
-    # -------------------------------
-    # 🧹 CLEANING
-    # -------------------------------
+    st.success("Missing values handled")
 
-    # Remove commas (important)
-    df = df.replace(',', '', regex=True)
+    # ---------------------------
+    # Encode Categorical Data
+    # ---------------------------
+    st.write("🔤 Encoding categorical features...")
 
-    # Drop missing values
-    df = df.dropna()
-
-    # -------------------------------
-    # 🔤 ENCODING
-    # -------------------------------
-    le_dict = {}
-
-    for col in df.columns:
-        if df[col].dtype == 'object':
+    label_encoders = {}
+    for col in data.columns:
+        if data[col].dtype == "object":
             le = LabelEncoder()
-            df[col] = le.fit_transform(df[col].astype(str))
-            le_dict[col] = le
+            data[col] = le.fit_transform(data[col])
+            label_encoders[col] = le
 
-    # -------------------------------
-    # 🔢 FORCE NUMERIC (MAIN FIX)
-    # -------------------------------
-    df = df.apply(pd.to_numeric, errors='coerce')
-    df = df.dropna()
+    st.success("Encoding completed")
 
-    st.subheader("🔍 Data Types After Processing")
-    st.write(df.dtypes)
+    # ---------------------------
+    # Split Features & Target
+    # ---------------------------
+    target_column = data.columns[-1]
+    X = data.drop(columns=[target_column])
+    y = data[target_column]
 
-    # -------------------------------
-    # 🎯 SELECT TARGET
-    # -------------------------------
-    target = st.selectbox("Select Target Column", df.columns)
-    # -------------------------------
-    # 📊 Handle Outliers (CAPPING METHOD)
-    # -------------------------------
-    st.subheader("📊 Handling Outliers (Safe Method)")
-    for col in df.select_dtypes(include=np.number).columns:
-        Q1 = df[col].quantile(0.25)
-        Q3 = df[col].quantile(0.75)
-        IQR = Q3 - Q1
-        lower = Q1 - 1.5 * IQR
-        upper = Q3 + 1.5 * IQR
-        df[col] = np.where(df[col] < lower, lower, df[col])
-        df[col] = np.where(df[col] > upper, upper, df[col])
-        st.write("✅ Outliers handled without removing rows")
+    st.write("📌 Features shape:", X.shape)
 
-    # -------------------------------
-    # 🎯 FEATURES & TARGET
-    # -------------------------------
-    X = df.drop(target, axis=1)
-    y = df[target]
+    # ---------------------------
+    # Safe Outlier Handling (Clipping instead of deleting rows)
+    # ---------------------------
+    st.write("📊 Handling Outliers (Safe Method)")
 
-    # -------------------------------
-    # 🚨 SAFETY CHECK (NO ERROR)
-    # -------------------------------
-    if X.select_dtypes(include=['object']).shape[1] > 0:
-        st.error("❌ Still contains non-numeric columns!")
+    for col in X.columns:
+        if X[col].dtype != "object":
+            lower = X[col].quantile(0.05)
+            upper = X[col].quantile(0.95)
+            X[col] = X[col].clip(lower, upper)
+
+    st.success("Outliers handled safely (no rows removed)")
+
+    # ---------------------------
+    # Safety Check
+    # ---------------------------
+    if len(X) == 0:
+        st.error("Dataset is empty after preprocessing. Please check your data.")
         st.stop()
 
-    # -------------------------------
-    # ✂️ TRAIN TEST SPLIT
-    # -------------------------------
+    # ---------------------------
+    # Train-Test Split
+    # ---------------------------
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.2, random_state=42
     )
 
-    # -------------------------------
-    # ⚖️ SCALING
-    # -------------------------------
+    # ---------------------------
+    # Feature Scaling
+    # ---------------------------
     scaler = StandardScaler()
     X_train = scaler.fit_transform(X_train)
     X_test = scaler.transform(X_test)
 
-    # -------------------------------
-    # 🔢 SELECT K
-    # -------------------------------
-    k = st.slider("Select K Value", 1, 20, 5)
+    # ---------------------------
+    # Model Training
+    # ---------------------------
+    st.write("🤖 Training KNN Model...")
 
-    # -------------------------------
-    # 🤖 TRAIN MODEL
-    # -------------------------------
-    model = KNeighborsRegressor(n_neighbors=k)
+    k = st.slider("Select K value", 1, 15, 5)
+
+    model = KNeighborsClassifier(n_neighbors=k)
     model.fit(X_train, y_train)
 
+    # ---------------------------
+    # Prediction
+    # ---------------------------
     y_pred = model.predict(X_test)
 
-    # -------------------------------
-    # 📈 METRICS
-    # -------------------------------
-    st.subheader("📈 Model Performance")
+    acc = accuracy_score(y_test, y_pred)
 
-    mse = mean_squared_error(y_test, y_pred)
-    rmse = np.sqrt(mse)
-    r2 = r2_score(y_test, y_pred)
+    st.subheader("📈 Model Results")
+    st.write("Accuracy:", round(acc * 100, 2), "%")
 
-    col1, col2, col3 = st.columns(3)
-    col1.metric("MSE", f"{mse:.2f}")
-    col2.metric("RMSE", f"{rmse:.2f}")
-    col3.metric("R² Score", f"{r2:.2f}")
+    st.text("Classification Report:")
+    st.text(classification_report(y_test, y_pred))
 
-    # -------------------------------
-    # 🔮 PREDICTION UI
-    # -------------------------------
-    st.subheader("🔮 Make Prediction")
+    # ---------------------------
+    # Single Prediction UI
+    # ---------------------------
+    st.subheader("🔮 Make a Prediction")
 
-    user_input = []
-
+    input_data = []
     for col in X.columns:
-        if col in le_dict:
-            val = st.selectbox(col, le_dict[col].classes_)
-            val = le_dict[col].transform([val])[0]
-        else:
-            val = st.number_input(col, value=float(X[col].mean()))
-
-        user_input.append(val)
-
-    user_input = np.array(user_input).reshape(1, -1)
-    user_input = scaler.transform(user_input)
+        val = st.number_input(f"Enter {col}", value=float(X[col].mean()))
+        input_data.append(val)
 
     if st.button("Predict"):
-        result = model.predict(user_input)
-        st.success(f"🌱 Predicted Value: {result[0]:.2f}")
+        input_array = np.array(input_data).reshape(1, -1)
+        input_array = scaler.transform(input_array)
+
+        prediction = model.predict(input_array)
+
+        st.success(f"Predicted Output: {prediction[0]}")
 
 else:
-    st.warning("⚠️ Please upload a dataset to continue")
+    st.info("⬆ Upload a CSV file to start")
