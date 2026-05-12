@@ -8,10 +8,10 @@ from sklearn.neighbors import KNeighborsRegressor
 from sklearn.metrics import mean_squared_error, r2_score
 
 # -----------------------------
-# APP SETUP
+# PAGE CONFIG
 # -----------------------------
 st.set_page_config(layout="wide")
-st.title("🌾 Crop Production Prediction (Fixed UI Version)")
+st.title("🌾 Crop Production Prediction - KNN App")
 
 # -----------------------------
 # UPLOAD DATA
@@ -27,8 +27,10 @@ if file is not None:
     st.dataframe(df.head())
 
     # -----------------------------
-    # CLEAN MISSING VALUES
+    # MISSING VALUES HANDLING
     # -----------------------------
+    st.subheader("🧹 Handling Missing Values")
+
     for col in df.columns:
         if df[col].dtype == "object":
             df[col] = df[col].fillna(df[col].mode()[0])
@@ -36,7 +38,7 @@ if file is not None:
             df[col] = pd.to_numeric(df[col], errors="coerce")
             df[col] = df[col].fillna(df[col].mean())
 
-    st.success("Missing values handled")
+    st.success("Missing values handled successfully")
 
     # -----------------------------
     # TARGET COLUMN
@@ -44,7 +46,7 @@ if file is not None:
     target = "Production"
 
     if target not in df.columns:
-        st.error("Production column not found!")
+        st.error("❌ Production column not found in dataset")
         st.stop()
 
     # -----------------------------
@@ -53,14 +55,13 @@ if file is not None:
     df_encoded = df.copy()
     encoders = {}
 
-    categorical_cols = []
-
     for col in df_encoded.columns:
         if df_encoded[col].dtype == "object":
             le = LabelEncoder()
             df_encoded[col] = le.fit_transform(df_encoded[col])
             encoders[col] = le
-            categorical_cols.append(col)
+
+    st.success("Encoding completed")
 
     # -----------------------------
     # FEATURES & TARGET
@@ -103,53 +104,60 @@ if file is not None:
     # -----------------------------
     st.subheader("📈 Model Performance")
 
-    st.write("MSE:", round(mean_squared_error(y_test, y_pred), 2))
-    st.write("R² Score:", round(r2_score(y_test, y_pred), 2))
-# -----------------------------
-# 🔮 PREDICTION SECTION (FORM STYLE UI)
-# -----------------------------
-st.subheader("🔮 Make Prediction")
+    mse = mean_squared_error(y_test, y_pred)
+    r2 = r2_score(y_test, y_pred)
 
-with st.form("prediction_form"):
+    col1, col2 = st.columns(2)
+    col1.metric("MSE", round(mse, 2))
+    col2.metric("R² Score", round(r2, 2))
 
-    # -------------------------
-    # Categorical dropdowns
-    # -------------------------
-    district = st.selectbox("District_Name", encoders["District_Name"].classes_)
+    # -----------------------------
+    # 📉 K vs ERROR GRAPH
+    # -----------------------------
+    st.subheader("📉 Error vs K")
 
-    season = st.selectbox("Season", encoders["Season"].classes_)
+    errors = []
+    for i in range(1, 21):
+        temp_model = KNeighborsRegressor(n_neighbors=i)
+        temp_model.fit(X_train, y_train)
+        pred = temp_model.predict(X_test)
+        errors.append(mean_squared_error(y_test, pred))
 
-    crop = st.selectbox("Crop", encoders["Crop"].classes_)
+    st.line_chart(pd.DataFrame({"K": range(1, 21), "MSE": errors}).set_index("K"))
 
-    # -------------------------
-    # Numeric inputs with +/- style
-    # -------------------------
-    crop_year = st.number_input("Crop_Year", value=2005.0, step=1.0)
+    # -----------------------------
+    # 🔮 PREDICTION UI (FORM STYLE LIKE YOUR IMAGE)
+    # -----------------------------
+    st.subheader("🔮 Make Prediction")
 
-    area = st.number_input("Area", value=float(df["Area"].mean()), step=10.0)
+    with st.form("prediction_form"):
 
-    # -------------------------
-    # Submit button
-    # -------------------------
-    submitted = st.form_submit_button("Predict")
+        district = st.selectbox("District_Name", encoders["District_Name"].classes_)
+        season = st.selectbox("Season", encoders["Season"].classes_)
+        crop = st.selectbox("Crop", encoders["Crop"].classes_)
 
-# -----------------------------
-# PREDICTION LOGIC
-# -----------------------------
-if submitted:
+        crop_year = st.number_input("Crop_Year", value=2005.0, step=1.0)
+        area = st.number_input("Area", value=float(df["Area"].mean()), step=10.0)
 
-    # encode categorical
-    district = encoders["District_Name"].transform([district])[0]
-    season = encoders["Season"].transform([season])[0]
-    crop = encoders["Crop"].transform([crop])[0]
+        submit = st.form_submit_button("Predict")
 
-    # create input array (order MUST match training features)
-    input_data = np.array([[district, crop_year, season, crop, area]])
+    # -----------------------------
+    # PREDICTION LOGIC
+    # -----------------------------
+    if submit:
 
-    # scale
-    input_data = scaler.transform(input_data)
+        district = encoders["District_Name"].transform([district])[0]
+        season = encoders["Season"].transform([season])[0]
+        crop = encoders["Crop"].transform([crop])[0]
 
-    # predict
-    result = model.predict(input_data)
+        input_data = np.array([[district, crop_year, season, crop, area]])
 
-    st.success(f"🌾 Predicted Production: {result[0]:.2f}")
+        input_data = scaler.transform(input_data)
+        input_data = np.nan_to_num(input_data)
+
+        result = model.predict(input_data)
+
+        st.success(f"🌾 Predicted Production: {result[0]:.2f}")
+
+else:
+    st.info("👆 Upload CSV file to start")
