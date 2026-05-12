@@ -139,26 +139,6 @@ if file is not None:
     col3.metric("R² Score", round(r2, 2))
 
     # -----------------------------
-    # K vs ERROR GRAPH
-    # -----------------------------
-    st.subheader("📉 K vs Error Graph")
-
-    errors = []
-
-    for i in range(1, 21):
-        temp_model = KNeighborsRegressor(n_neighbors=i)
-        temp_model.fit(X_train, y_train)
-        pred = temp_model.predict(X_test)
-        errors.append(mean_squared_error(y_test, pred))
-
-    fig, ax = plt.subplots()
-    ax.plot(range(1, 21), errors)
-    ax.set_xlabel("K Value")
-    ax.set_ylabel("MSE")
-
-    st.pyplot(fig)
-
-    # -----------------------------
     # PREDICTION SECTION
     # -----------------------------
     st.subheader("🔮 Predict Production")
