@@ -13,112 +13,112 @@ from sklearn.metrics import mean_squared_error, r2_score
 st.set_page_config(layout="wide")
 st.title("🌾 KNN Regression - Crop production")
 
-# -----------------------------
+# -------------------------------
 # 📂 Upload Dataset
-# -----------------------------
-file = st.file_uploader("Upload your CSV file", type=["csv"])
+# -------------------------------
+file = st.file_uploader("Upload CSV File", type=["csv"])
 
-if file:
+if file is not None:
+
     df = pd.read_csv(file)
 
-    # -----------------------------
-    # 📊 Show Dataset
-    # -----------------------------
-    st.subheader("📊 Dataset Preview")
-    st.dataframe(df)
+    st.subheader("📊 Original Dataset")
+    st.dataframe(df.head())
 
-    st.subheader("📌 Dataset Info")
-    st.write(df.describe())
+    # -------------------------------
+    # 🧹 CLEANING
+    # -------------------------------
 
-    # -----------------------------
-    # 🧹 Missing Values
-    # -----------------------------
-    st.subheader("🧹 Missing Values")
-    st.write(df.isnull().sum())
+    # Remove commas (important)
+    df = df.replace(',', '', regex=True)
 
+    # Drop missing values
     df = df.dropna()
 
-    # -----------------------------
-    # 🎯 Select Target
-    # -----------------------------
-    target = st.selectbox("Select Target Column", df.columns)
-
-    # -----------------------------
-    # 🔤 Encoding
-    # -----------------------------
-    st.subheader("🔤 Encoding Categorical Columns")
-
-    df_encoded = df.copy()
-    encoders = {}
+    # -------------------------------
+    # 🔤 ENCODING
+    # -------------------------------
+    le_dict = {}
 
     for col in df.columns:
-        if df[col].dtype == "object":
+        if df[col].dtype == 'object':
             le = LabelEncoder()
-            df_encoded[col] = le.fit_transform(df[col])
-            encoders[col] = le
+            df[col] = le.fit_transform(df[col].astype(str))
+            le_dict[col] = le
 
-    st.write("Encoded Data Preview")
-    st.dataframe(df_encoded.head())
+    # -------------------------------
+    # 🔢 FORCE NUMERIC (MAIN FIX)
+    # -------------------------------
+    df = df.apply(pd.to_numeric, errors='coerce')
+    df = df.dropna()
 
-    # -----------------------------
-    # 📊 Outlier Visualization
-    # -----------------------------
-    st.subheader("📊 Outlier Detection (Boxplot)")
+    st.subheader("🔍 Data Types After Processing")
+    st.write(df.dtypes)
 
-    num_cols = df_encoded.select_dtypes(include=np.number).columns
+    # -------------------------------
+    # 🎯 SELECT TARGET
+    # -------------------------------
+    target = st.selectbox("Select Target Column", df.columns)
 
-    fig, ax = plt.subplots()
-    sns.boxplot(data=df_encoded[num_cols], ax=ax)
-    st.pyplot(fig)
+    # -------------------------------
+    # 📊 OUTLIER REMOVAL
+    # -------------------------------
+    st.subheader("📊 Removing Outliers")
 
-    # -----------------------------
-    # 🧹 Remove Outliers (IQR)
-    # -----------------------------
-    Q1 = df_encoded[num_cols].quantile(0.25)
-    Q3 = df_encoded[num_cols].quantile(0.75)
+    numeric_cols = df.select_dtypes(include=np.number).columns
+
+    Q1 = df[numeric_cols].quantile(0.25)
+    Q3 = df[numeric_cols].quantile(0.75)
     IQR = Q3 - Q1
 
-    df_clean = df_encoded[~((df_encoded[num_cols] < (Q1 - 1.5 * IQR)) |
-                             (df_encoded[num_cols] > (Q3 + 1.5 * IQR))).any(axis=1)]
+    df = df[~((df[numeric_cols] < (Q1 - 1.5 * IQR)) |
+              (df[numeric_cols] > (Q3 + 1.5 * IQR))).any(axis=1)]
 
-    st.write("Shape after removing outliers:", df_clean.shape)
+    st.write("Shape after outlier removal:", df.shape)
 
-    # -----------------------------
-    # 🎯 Features & Target
-    # -----------------------------
-    X = df_clean.drop(target, axis=1)
-    y = df_clean[target]
+    # -------------------------------
+    # 🎯 FEATURES & TARGET
+    # -------------------------------
+    X = df.drop(target, axis=1)
+    y = df[target]
 
-    # -----------------------------
-    # ✂️ Split
-    # -----------------------------
+    # -------------------------------
+    # 🚨 SAFETY CHECK (NO ERROR)
+    # -------------------------------
+    if X.select_dtypes(include=['object']).shape[1] > 0:
+        st.error("❌ Still contains non-numeric columns!")
+        st.stop()
+
+    # -------------------------------
+    # ✂️ TRAIN TEST SPLIT
+    # -------------------------------
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.2, random_state=42
     )
 
-    # -----------------------------
-    # ⚖️ Scaling
-    # -----------------------------
+    # -------------------------------
+    # ⚖️ SCALING
+    # -------------------------------
     scaler = StandardScaler()
     X_train = scaler.fit_transform(X_train)
     X_test = scaler.transform(X_test)
 
-    # -----------------------------
-    # 🔢 Select K
-    # -----------------------------
-    k = st.slider("Select K value", 1, 20, 5)
+    # -------------------------------
+    # 🔢 SELECT K
+    # -------------------------------
+    k = st.slider("Select K Value", 1, 20, 5)
 
-    # -----------------------------
-    # 🤖 Train Model
-    # -----------------------------
+    # -------------------------------
+    # 🤖 TRAIN MODEL
+    # -------------------------------
     model = KNeighborsRegressor(n_neighbors=k)
     model.fit(X_train, y_train)
 
     y_pred = model.predict(X_test)
 
-    # -----------------------------
-    # 📈 Metrics
-    # -----------------------------
+    # -------------------------------
+    # 📈 METRICS
+    # -------------------------------
     st.subheader("📈 Model Performance")
 
     mse = mean_squared_error(y_test, y_pred)
@@ -126,24 +126,24 @@ if file:
     r2 = r2_score(y_test, y_pred)
 
     col1, col2, col3 = st.columns(3)
-    col1.metric("MSE", round(mse, 2))
-    col2.metric("RMSE", round(rmse, 2))
-    col3.metric("R² Score", round(r2, 2))
+    col1.metric("MSE", f"{mse:.2f}")
+    col2.metric("RMSE", f"{rmse:.2f}")
+    col3.metric("R² Score", f"{r2:.2f}")
 
-
-    # -----------------------------
-    # 🔮 Prediction Section
-    # -----------------------------
+    # -------------------------------
+    # 🔮 PREDICTION UI
+    # -------------------------------
     st.subheader("🔮 Make Prediction")
 
     user_input = []
 
     for col in X.columns:
-        if col in encoders:
-            val = st.selectbox(col, encoders[col].classes_)
-            val = encoders[col].transform([val])[0]
+        if col in le_dict:
+            val = st.selectbox(col, le_dict[col].classes_)
+            val = le_dict[col].transform([val])[0]
         else:
-            val = st.number_input(col, value=float(df[col].mean()))
+            val = st.number_input(col, value=float(X[col].mean()))
+
         user_input.append(val)
 
     user_input = np.array(user_input).reshape(1, -1)
@@ -151,7 +151,7 @@ if file:
 
     if st.button("Predict"):
         result = model.predict(user_input)
-        st.success(f"Predicted Value: {result[0]:.2f}")
+        st.success(f"🌱 Predicted Value: {result[0]:.2f}")
 
 else:
-    st.info("👆 Upload your dataset to start")
+    st.warning("⚠️ Please upload a dataset to continue")
