@@ -16,98 +16,113 @@ st.set_page_config(
     layout="wide"
 )
 
-# ---------------- TITLE ----------------
-st.title("🌾 KNN Regression - Crop production")
+st.title("🌾 KNN Regression - Crop Production")
 
 # ---------------- FILE UPLOAD ----------------
 uploaded_file = st.file_uploader(
-    "Upload your CSV file",
+    "Upload CSV File",
     type=["csv"]
 )
 
 if uploaded_file is not None:
 
-    # ---------------- READ DATA ----------------
+    # ---------------- LOAD DATA ----------------
     df = pd.read_csv(uploaded_file)
 
     st.subheader("📊 Dataset Preview")
-    st.dataframe(df.head(10), use_container_width=True)
-
-    # ---------------- DATASET INFO ----------------
-    st.subheader("📌 Dataset Info")
-
-    numeric_df = df.select_dtypes(include=np.number)
-
-    if not numeric_df.empty:
-        st.dataframe(numeric_df.describe(), use_container_width=True)
+    st.dataframe(df.head(), use_container_width=True)
 
     # ---------------- MISSING VALUES ----------------
     st.subheader("🧹 Missing Values")
 
-    missing_values = df.isnull().sum()
+    missing_df = pd.DataFrame(df.isnull().sum(), columns=["Missing Values"])
 
-    st.dataframe(
-        missing_values.reset_index().rename(
-            columns={"index": "Column", 0: "Missing Values"}
-        ),
-        use_container_width=True
-    )
+    st.dataframe(missing_df, use_container_width=True)
 
-    # ---------------- HANDLE MISSING VALUES ----------------
+    # Remove missing rows
     df = df.dropna()
 
     # ---------------- TARGET COLUMN ----------------
     st.subheader("🎯 Select Target Column")
 
+    numeric_columns = df.select_dtypes(include=np.number).columns.tolist()
+
+    if len(numeric_columns) == 0:
+        st.error("No numeric columns found in dataset.")
+        st.stop()
+
     target_column = st.selectbox(
-        "Choose target column",
-        df.columns
+        "Select Target Column",
+        numeric_columns
     )
 
     # ---------------- ENCODING ----------------
     st.subheader("🔤 Encoding Categorical Columns")
 
-    label_encoders = {}
-
     encoded_df = df.copy()
 
+    label_encoders = {}
+
     for col in encoded_df.columns:
-        if encoded_df[col].dtype == 'object':
+
+        if encoded_df[col].dtype == "object":
+
             le = LabelEncoder()
-            encoded_df[col] = le.fit_transform(encoded_df[col].astype(str))
+
+            encoded_df[col] = le.fit_transform(
+                encoded_df[col].astype(str)
+            )
+
             label_encoders[col] = le
 
     st.write("Encoded Data Preview")
-    st.dataframe(encoded_df.head(), use_container_width=True)
+
+    st.dataframe(
+        encoded_df.head(),
+        use_container_width=True
+    )
+
+    # ---------------- CONVERT TARGET TO NUMERIC ----------------
+    encoded_df[target_column] = pd.to_numeric(
+        encoded_df[target_column],
+        errors="coerce"
+    )
+
+    encoded_df = encoded_df.dropna()
 
     # ---------------- OUTLIER DETECTION ----------------
     st.subheader("📈 Outlier Detection (Boxplot)")
 
     fig, ax = plt.subplots(figsize=(8, 4))
 
-    if target_column in encoded_df.columns:
-        ax.boxplot(encoded_df[target_column])
-        ax.set_title(f"Boxplot of {target_column}")
+    # FIXED ERROR HERE
+    numeric_target = encoded_df[target_column].astype(float)
+
+    ax.boxplot(numeric_target)
+
+    ax.set_title(f"Boxplot of {target_column}")
 
     st.pyplot(fig)
 
     # ---------------- REMOVE OUTLIERS ----------------
-    Q1 = encoded_df[target_column].quantile(0.25)
-    Q3 = encoded_df[target_column].quantile(0.75)
+    Q1 = numeric_target.quantile(0.25)
+    Q3 = numeric_target.quantile(0.75)
+
     IQR = Q3 - Q1
 
     lower_bound = Q1 - 1.5 * IQR
     upper_bound = Q3 + 1.5 * IQR
 
     clean_df = encoded_df[
-        (encoded_df[target_column] >= lower_bound) &
-        (encoded_df[target_column] <= upper_bound)
+        (numeric_target >= lower_bound) &
+        (numeric_target <= upper_bound)
     ]
 
     st.success(f"Shape after removing outliers: {clean_df.shape}")
 
     # ---------------- FEATURES & TARGET ----------------
     X = clean_df.drop(columns=[target_column])
+
     y = clean_df[target_column]
 
     # ---------------- TRAIN TEST SPLIT ----------------
@@ -119,7 +134,7 @@ if uploaded_file is not None:
     )
 
     # ---------------- K VALUE ----------------
-    st.subheader("Select K value")
+    st.subheader("🎚 Select K Value")
 
     k_value = st.slider(
         "K Value",
@@ -129,7 +144,9 @@ if uploaded_file is not None:
     )
 
     # ---------------- MODEL ----------------
-    model = KNeighborsRegressor(n_neighbors=k_value)
+    model = KNeighborsRegressor(
+        n_neighbors=k_value
+    )
 
     model.fit(X_train, y_train)
 
@@ -137,10 +154,12 @@ if uploaded_file is not None:
 
     # ---------------- METRICS ----------------
     mse = mean_squared_error(y_test, y_pred)
+
     rmse = np.sqrt(mse)
+
     r2 = r2_score(y_test, y_pred)
 
-    # ---------------- PERFORMANCE ----------------
+    # ---------------- MODEL PERFORMANCE ----------------
     st.subheader("📉 Model Performance")
 
     col1, col2, col3 = st.columns(3)
@@ -161,9 +180,12 @@ if uploaded_file is not None:
 
     for column in X.columns:
 
+        # categorical columns
         if column in label_encoders:
 
-            options = label_encoders[column].classes_
+            options = list(
+                label_encoders[column].classes_
+            )
 
             selected_option = st.selectbox(
                 column,
@@ -176,29 +198,26 @@ if uploaded_file is not None:
 
             input_data[column] = encoded_value
 
+        # numeric columns
         else:
 
-            min_val = float(X[column].min())
-            max_val = float(X[column].max())
-            mean_val = float(X[column].mean())
-
-            input_value = st.number_input(
+            value = st.number_input(
                 column,
-                min_value=min_val,
-                max_value=max_val,
-                value=mean_val
+                value=float(X[column].mean())
             )
 
-            input_data[column] = input_value
+            input_data[column] = value
 
     # ---------------- PREDICT BUTTON ----------------
     if st.button("Predict"):
 
         input_df = pd.DataFrame([input_data])
 
-        prediction = model.predict(input_df)[0]
+        prediction = model.predict(input_df)
 
-        st.success(f"Predicted Value: {prediction:.2f}")
+        st.success(
+            f"Predicted Value: {prediction[0]:.2f}"
+        )
 
 else:
-    st.info("Please upload a CSV file to continue.")
+    st.info("Please upload a CSV file.")
