@@ -111,19 +111,7 @@ if file is not None:
     col1.metric("MSE", round(mse, 2))
     col2.metric("R² Score", round(r2, 2))
 
-    # -----------------------------
-    # 📉 K vs ERROR GRAPH
-    # -----------------------------
-    st.subheader("📉 Error vs K")
 
-    errors = []
-    for i in range(1, 21):
-        temp_model = KNeighborsRegressor(n_neighbors=i)
-        temp_model.fit(X_train, y_train)
-        pred = temp_model.predict(X_test)
-        errors.append(mean_squared_error(y_test, pred))
-
-    st.line_chart(pd.DataFrame({"K": range(1, 21), "MSE": errors}).set_index("K"))
 
     # -----------------------------
     # 🔮 PREDICTION UI (FORM STYLE LIKE YOUR IMAGE)
