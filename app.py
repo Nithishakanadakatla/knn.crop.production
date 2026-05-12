@@ -105,42 +105,51 @@ if file is not None:
 
     st.write("MSE:", round(mean_squared_error(y_test, y_pred), 2))
     st.write("R² Score:", round(r2_score(y_test, y_pred), 2))
+# -----------------------------
+# 🔮 PREDICTION SECTION (FORM STYLE UI)
+# -----------------------------
+st.subheader("🔮 Make Prediction")
 
-    # -----------------------------
-    # 🔮 PREDICTION UI (FIXED)
-    # -----------------------------
-    st.subheader("🔮 Predict Production")
+with st.form("prediction_form"):
 
-    input_data = []
+    # -------------------------
+    # Categorical dropdowns
+    # -------------------------
+    district = st.selectbox("District_Name", encoders["District_Name"].classes_)
 
-    for col in X.columns:
+    season = st.selectbox("Season", encoders["Season"].classes_)
 
-        # 🔴 CATEGORICAL → DROPDOWN
-        if col in encoders:
+    crop = st.selectbox("Crop", encoders["Crop"].classes_)
 
-            options = list(encoders[col].classes_)
-            selected = st.selectbox(col, options)
+    # -------------------------
+    # Numeric inputs with +/- style
+    # -------------------------
+    crop_year = st.number_input("Crop_Year", value=2005.0, step=1.0)
 
-            encoded = encoders[col].transform([selected])[0]
-            input_data.append(encoded)
+    area = st.number_input("Area", value=float(df["Area"].mean()), step=10.0)
 
-        # 🔵 NUMERIC → NUMBER INPUT
-        else:
-            val = st.number_input(col, value=float(df[col].mean()))
-            input_data.append(val)
+    # -------------------------
+    # Submit button
+    # -------------------------
+    submitted = st.form_submit_button("Predict")
 
-    # -----------------------------
-    # PREDICT BUTTON
-    # -----------------------------
-    if st.button("Predict"):
+# -----------------------------
+# PREDICTION LOGIC
+# -----------------------------
+if submitted:
 
-        input_array = np.array(input_data).reshape(1, -1)
-        input_array = scaler.transform(input_array)
-        input_array = np.nan_to_num(input_array)
+    # encode categorical
+    district = encoders["District_Name"].transform([district])[0]
+    season = encoders["Season"].transform([season])[0]
+    crop = encoders["Crop"].transform([crop])[0]
 
-        result = model.predict(input_array)
+    # create input array (order MUST match training features)
+    input_data = np.array([[district, crop_year, season, crop, area]])
 
-        st.success(f"🌾 Predicted Production: {result[0]:.2f}")
+    # scale
+    input_data = scaler.transform(input_data)
 
-else:
-    st.info("👆 Upload your CSV file to start")
+    # predict
+    result = model.predict(input_data)
+
+    st.success(f"🌾 Predicted Production: {result[0]:.2f}")
