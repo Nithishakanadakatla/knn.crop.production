@@ -10,7 +10,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.neighbors import KNeighborsRegressor
 from sklearn.metrics import mean_squared_error, r2_score
 
-# ---------------- PAGE SETTINGS ----------------
+# ---------------- PAGE CONFIG ----------------
 
 st.set_page_config(
     page_title="KNN Regression - Crop Production",
@@ -30,18 +30,26 @@ if uploaded_file is not None:
 
     try:
 
-        # ---------------- READ CSV ----------------
+        # ---------------- LOAD DATA ----------------
 
         df = pd.read_csv(uploaded_file)
 
         st.subheader("📊 Dataset Preview")
         st.dataframe(df.head(), use_container_width=True)
 
-        # ---------------- REMOVE NULL VALUES ----------------
+        # ---------------- DATA INFO ----------------
 
-        df = df.dropna()
+        st.subheader("📌 Dataset Info")
 
-        # ---------------- SHOW MISSING VALUES ----------------
+        numeric_cols = df.select_dtypes(include=np.number)
+
+        if not numeric_cols.empty:
+            st.dataframe(
+                numeric_cols.describe(),
+                use_container_width=True
+            )
+
+        # ---------------- MISSING VALUES ----------------
 
         st.subheader("🧹 Missing Values")
 
@@ -50,7 +58,13 @@ if uploaded_file is not None:
             columns=["Missing Values"]
         )
 
-        st.dataframe(missing_df)
+        st.dataframe(
+            missing_df,
+            use_container_width=True
+        )
+
+        # Remove missing values
+        df = df.dropna()
 
         # ---------------- ENCODE CATEGORICAL COLUMNS ----------------
 
@@ -72,14 +86,13 @@ if uploaded_file is not None:
 
                 label_encoders[col] = le
 
-        # ---------------- FORCE ALL DATA TO NUMERIC ----------------
-
+        # Convert all columns to numeric
         encoded_df = encoded_df.apply(
             pd.to_numeric,
             errors="coerce"
         )
 
-        # Remove any remaining NaN rows
+        # Remove NaN rows
         encoded_df = encoded_df.dropna()
 
         st.write("Encoded Data Preview")
@@ -105,29 +118,51 @@ if uploaded_file is not None:
         fig, ax = plt.subplots(figsize=(8, 4))
 
         ax.boxplot(
-            encoded_df[target_column].values.astype(float)
+            encoded_df[target_column].astype(float)
         )
 
-        ax.set_title(f"Boxplot of {target_column}")
+        ax.set_title(
+            f"Boxplot of {target_column}"
+        )
 
         st.pyplot(fig)
 
         # ---------------- REMOVE OUTLIERS ----------------
 
-        Q1 = encoded_df[target_column].quantile(0.25)
+        # Apply only if target has many unique values
+        if encoded_df[target_column].nunique() > 10:
 
-        Q3 = encoded_df[target_column].quantile(0.75)
+            Q1 = encoded_df[target_column].quantile(0.25)
 
-        IQR = Q3 - Q1
+            Q3 = encoded_df[target_column].quantile(0.75)
 
-        lower_bound = Q1 - 1.5 * IQR
+            IQR = Q3 - Q1
 
-        upper_bound = Q3 + 1.5 * IQR
+            lower_bound = Q1 - 1.5 * IQR
 
-        clean_df = encoded_df[
-            (encoded_df[target_column] >= lower_bound) &
-            (encoded_df[target_column] <= upper_bound)
-        ]
+            upper_bound = Q3 + 1.5 * IQR
+
+            clean_df = encoded_df[
+                (encoded_df[target_column] >= lower_bound) &
+                (encoded_df[target_column] <= upper_bound)
+            ]
+
+            # If all rows removed
+            if clean_df.shape[0] == 0:
+
+                st.warning(
+                    "All rows removed during outlier removal. Using original dataset."
+                )
+
+                clean_df = encoded_df.copy()
+
+        else:
+
+            clean_df = encoded_df.copy()
+
+            st.info(
+                "Outlier removal skipped for categorical target."
+            )
 
         st.success(
             f"Shape after removing outliers: {clean_df.shape}"
@@ -135,28 +170,46 @@ if uploaded_file is not None:
 
         # ---------------- FEATURES & TARGET ----------------
 
-        X = clean_df.drop(columns=[target_column])
+        X = clean_df.drop(
+            columns=[target_column]
+        )
 
         y = clean_df[target_column]
 
-        # ---------------- FINAL FIX ----------------
-        # THIS FIXES YOUR K VALUE ERROR
-
+        # Convert to float
         X = X.astype(np.float64)
 
         y = y.astype(np.float64)
 
-        # Remove infinity values
-        X = X.replace([np.inf, -np.inf], np.nan)
+        # Remove inf values
+        X = X.replace(
+            [np.inf, -np.inf],
+            np.nan
+        )
 
-        y = y.replace([np.inf, -np.inf], np.nan)
+        y = y.replace(
+            [np.inf, -np.inf],
+            np.nan
+        )
 
         # Remove NaN again
-        valid_rows = ~(X.isna().any(axis=1) | y.isna())
+        valid_rows = ~(
+            X.isna().any(axis=1) | y.isna()
+        )
 
         X = X[valid_rows]
 
         y = y[valid_rows]
+
+        # ---------------- CHECK EMPTY DATA ----------------
+
+        if len(X) == 0:
+
+            st.error(
+                "Dataset became empty after preprocessing."
+            )
+
+            st.stop()
 
         # ---------------- TRAIN TEST SPLIT ----------------
 
@@ -188,34 +241,49 @@ if uploaded_file is not None:
 
         model.fit(X_train, y_train)
 
-        # ---------------- PREDICTION ----------------
+        # ---------------- PREDICTIONS ----------------
 
         y_pred = model.predict(X_test)
 
         # ---------------- METRICS ----------------
 
-        mse = mean_squared_error(y_test, y_pred)
+        mse = mean_squared_error(
+            y_test,
+            y_pred
+        )
 
         rmse = np.sqrt(mse)
 
-        r2 = r2_score(y_test, y_pred)
+        r2 = r2_score(
+            y_test,
+            y_pred
+        )
 
-        # ---------------- PERFORMANCE ----------------
+        # ---------------- MODEL PERFORMANCE ----------------
 
         st.subheader("📉 Model Performance")
 
         col1, col2, col3 = st.columns(3)
 
         with col1:
-            st.metric("MSE", round(mse, 2))
+            st.metric(
+                "MSE",
+                round(mse, 2)
+            )
 
         with col2:
-            st.metric("RMSE", round(rmse, 2))
+            st.metric(
+                "RMSE",
+                round(rmse, 2)
+            )
 
         with col3:
-            st.metric("R² Score", round(r2, 2))
+            st.metric(
+                "R² Score",
+                round(r2, 2)
+            )
 
-        # ---------------- MANUAL PREDICTION ----------------
+        # ---------------- PREDICTION SECTION ----------------
 
         st.subheader("🧑‍🌾 Make Prediction")
 
@@ -234,11 +302,17 @@ if uploaded_file is not None:
 
         if st.button("Predict"):
 
-            input_df = pd.DataFrame([input_data])
+            input_df = pd.DataFrame(
+                [input_data]
+            )
 
-            input_df = input_df.astype(np.float64)
+            input_df = input_df.astype(
+                np.float64
+            )
 
-            prediction = model.predict(input_df)
+            prediction = model.predict(
+                input_df
+            )
 
             st.success(
                 f"Predicted Value: {prediction[0]:.2f}"
